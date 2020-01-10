@@ -109,10 +109,10 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
     if (writeFile(intent.getData())) {
       // This is for openFile to consume in dart, openFile is currently not in use
 //    _result.success(fileUri.toString());
-      Toast.makeText(mRegistrar.activeContext(),"Successfully saved to local storage", Toast.LENGTH_SHORT).show();
+//      Toast.makeText(mRegistrar.activeContext(),"Successfully saved to local storage", Toast.LENGTH_SHORT).show();
       _result.success("Successfully saved to local storage");
     } else {
-      Toast.makeText(mRegistrar.activeContext(),"Failed to save file", Toast.LENGTH_SHORT).show();
+//      Toast.makeText(mRegistrar.activeContext(),"Failed to save file", Toast.LENGTH_SHORT).show();
       _result.error(null,"Failed to save file", null);
     }
 
