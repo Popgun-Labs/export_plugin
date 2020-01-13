@@ -152,89 +152,12 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
   }
 
   private void writeFile(Uri uri) throws Throwable {
-    final InputStream is = new FileInputStream(path);
-    byte[] bytes = readBytes(is);
-
     final OutputStream os = registrar.activeContext().getContentResolver().openOutputStream(uri);
-    if (os != null) {
-      os.write(bytes);
-      os.close();
-    }
-  }
 
-  private byte[] readBytes(InputStream inputStream) throws IOException {
-    // this dynamically extends to take the bytes you read
-    ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+    //GUARD
+    if (os == null) throw new NullPointerException("output stream is null");
 
-    // this is storage overwritten on each iteration with bytes
-    int bufferSize = 1024;
-    byte[] buffer = new byte[bufferSize];
-
-    // we need to know how may bytes were read to write them to the byteBuffer
-    int len = 0;
-    while ((len = inputStream.read(buffer)) != -1) {
-      byteBuffer.write(buffer, 0, len);
-    }
-
-    // and then we can return your byte array.
-    return byteBuffer.toByteArray();
-  }
-
-  @SuppressWarnings("ResultOfMethodCallIgnored")
-  private void clearExternalShareFolder() {
-    File folder = getExternalShareFolder();
-    if (folder.exists()) {
-      for (File file : folder.listFiles()) {
-        file.delete();
-      }
-      folder.delete();
-    }
-  }
-
-  @SuppressWarnings("ResultOfMethodCallIgnored")
-  private File copyToExternalShareFolder(File file) throws IOException {
-    File folder = getExternalShareFolder();
-    if (!folder.exists()) {
-      folder.mkdirs();
-    }
-
-    File newFile = new File(folder, file.getName());
-    copy(file, newFile);
-    return newFile;
-  }
-
-  private boolean fileIsOnExternal(File file) {
-    try {
-      String filePath = file.getCanonicalPath();
-      File externalDir = Environment.getExternalStorageDirectory();
-      return externalDir != null && filePath.startsWith(externalDir.getCanonicalPath());
-    } catch (IOException e) {
-      return false;
-    }
-  }
-
-  @NonNull
-  private File getExternalShareFolder() {
-    return new File(registrar.context().getExternalCacheDir(), "share");
-  }
-
-  private static void copy(File src, File dst) throws IOException {
-    final InputStream in = new FileInputStream(src);
-    try {
-      OutputStream out = new FileOutputStream(dst);
-      try {
-        // Transfer bytes from in to out
-        byte[] buf = new byte[1024];
-        int len;
-        while ((len = in.read(buf)) > 0) {
-          out.write(buf, 0, len);
-        }
-      } finally {
-        out.close();
-      }
-    } finally {
-      in.close();
-    }
+    CopyHelperKt.copyTo(path, os);
   }
 
   private void expectMapArguments(MethodCall call) throws IllegalArgumentException {
