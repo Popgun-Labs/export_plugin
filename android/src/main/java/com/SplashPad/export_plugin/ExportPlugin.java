@@ -109,15 +109,13 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
       Log.d("ExportPlugin", "onActivityResult: intent = " + intent);
     }
 
-    //GUARD
-    if (intent == null || intent.getData() == null) {
-      result.error(null, "No directory chosen", null);
-      return true;
-    }
-
     try {
-      writeFile(intent.getData());
-      result.success("Successfully saved to local storage");
+      if (intent != null && intent.getData() != null) {
+        writeFile(intent.getData());
+        result.success("Successfully saved to local storage");
+      } else {
+        result.error(null, "No directory chosen", null);
+      }
     } catch (final Throwable e) {
       result.error(null,"Failed to save file", e);
     } finally {
