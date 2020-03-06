@@ -127,6 +127,7 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
     }
 
     // Unhandled case
+    result.error("Unknown result", null, null);
     return false;
   }
 
