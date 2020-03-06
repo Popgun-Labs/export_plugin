@@ -2,20 +2,14 @@ package com.SplashPad.export_plugin;
 
 import android.content.Intent;
 import android.net.Uri;
-import android.os.Environment;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Map;
 
+import io.flutter.BuildConfig;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
@@ -23,6 +17,9 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.common.PluginRegistry.ActivityResultListener;
 import io.flutter.plugin.common.PluginRegistry.Registrar;
+
+import static android.app.Activity.RESULT_CANCELED;
+import static android.app.Activity.RESULT_OK;
 
 /** ExportPlugin */
 public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityResultListener {
@@ -77,21 +74,10 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
       this.path = call.argument("path");
 
       // Android does not support showing the share sheet at a particular point on screen.
-      launchFilePicker((String) call.argument("title"));
-      return;
-    }
-
-    if ("open".equals(call.method)) {
-      expectMapArguments(call);
-      // Android does not support showing the share sheet at a particular point on screen.
-      try {
-        openFile(
-                (String) call.argument("uri")
-        );
-        result.success(null);
-      } catch (IOException e) {
-        result.error(e.getMessage(), null, null);
-      }
+      // So we are not using the SharePointOrigin call.argument
+      final String title = call.argument("title");
+      final String mimeType = call.argument("mimeType");
+      launchFilePicker(title, mimeType);
       return;
     }
 
@@ -102,51 +88,58 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
   @Override
   public boolean onActivityResult(int requestCode, int resultCode, Intent intent) {
 
-    //GUARD
+    if (BuildConfig.DEBUG) {
+        Log.d("ExportPlugin", "onActivityResult: intent = " + intent);
+    }
+
+    //GUARD : only handle create file requests
     if (requestCode != CREATE_FILE) return false;
 
-    if (BuildConfig.DEBUG) {
-      Log.d("ExportPlugin", "onActivityResult: intent = " + intent);
+    if (resultCode == RESULT_CANCELED) {
+        // If we get a cancelled result, we should reset the result and path
+        result.error("result cancelled", null, null);
+        result = null;
+        path = null;
+        return false;
     }
 
-    try {
-      if (intent != null && intent.getData() != null) {
-        writeFile(intent.getData());
-        result.success("Successfully saved to local storage");
-      } else {
-        result.error(null, "No directory chosen", null);
-      }
-    } catch (final Throwable e) {
-      result.error(null,"Failed to save file", e);
-    } finally {
-      result = null;
-      path = null;
+    if (resultCode == RESULT_OK) {
+        // GUARD : to make sure this block does not run even after cancelled
+        // result is null only in two conditions, a success RESULT_OK return, or a RESULT_CANCELLED return
+        if (result == null) {
+            return false;
+        }
+
+        try {
+            if (intent != null && intent.getData() != null) {
+                writeFile(intent.getData());
+                result.success("Successfully saved to local storage");
+            } else {
+                result.error("No directory chosen", null, null);
+            }
+        } catch (final Throwable e) {
+            result.error("Failed to save file",null, e);
+        } finally {
+            result = null;
+            path = null;
+        }
+        return true;
     }
 
-    return true;
+    // Unhandled case
+    return false;
   }
 
-  private void launchFilePicker(String title) {
+  private void launchFilePicker(String title, String mimeType) {
     // file picker prompt to save file
     final Intent intent = new Intent();
     intent.setAction(Intent.ACTION_CREATE_DOCUMENT);
     intent.addCategory(Intent.CATEGORY_OPENABLE);
-    intent.setType("audio/wav");
+    // setType does not seem to affect outcome audio/video, but we are setting it anyway
+    intent.setType(mimeType);
     intent.putExtra(Intent.EXTRA_TITLE, title);
 
     registrar.activity().startActivityForResult(intent, CREATE_FILE);
-  }
-
-  private void openFile(String uri) throws IOException {
-    if (uri == null || uri.isEmpty()) {
-      throw new IllegalArgumentException("Non-empty path expected");
-    }
-
-    Intent intent = new Intent();
-    intent.setAction(Intent.ACTION_GET_CONTENT);
-    intent.setDataAndType(Uri.parse(uri), "audio/wav");
-
-    registrar.activeContext().startActivity(intent);
   }
 
   private void writeFile(Uri uri) throws Throwable {
