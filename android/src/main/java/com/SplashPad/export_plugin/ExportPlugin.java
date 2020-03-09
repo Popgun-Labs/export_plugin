@@ -1,5 +1,6 @@
 package com.SplashPad.export_plugin;
 
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.util.Log;
@@ -24,11 +25,30 @@ import static android.app.Activity.RESULT_OK;
 /** ExportPlugin */
 public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityResultListener {
 
+  // this is so we can keep both the result and the path together
+  // prevents us getting into a weird state where we have 1 but not
+  // the other
+  class ExportJob {
+    final MethodChannel.Result result;
+    final String path;
+
+    ExportJob(Result result, String path) {
+      this.result = result;
+      this.path = path;
+    }
+  }
+
   private static final int CREATE_FILE = 1;
 
-  private MethodChannel.Result result;
-  private String path;
+  private ExportJob exportJob;
   private Registrar registrar;
+
+  // returns the current job and sets it to null
+  private ExportJob consumeJob() {
+    final ExportJob job = this.exportJob;
+    this.exportJob = null;
+    return job;
+  }
 
 
   // constructor for v2 (flutterPluginBinding)
@@ -70,8 +90,7 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
       expectMapArguments(call);
 
       // these are used in onActivityResult
-      this.result = result;
-      this.path = call.argument("path");
+      this.exportJob = new ExportJob(result, (String) call.argument("path"));
 
       // Android does not support showing the share sheet at a particular point on screen.
       // So we are not using the SharePointOrigin call.argument
@@ -89,46 +108,48 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
   public boolean onActivityResult(int requestCode, int resultCode, Intent intent) {
 
     if (BuildConfig.DEBUG) {
-        Log.d("ExportPlugin", "onActivityResult: intent = " + intent);
+      Log.d("ExportPlugin", "onActivityResult: intent = " + intent);
     }
 
     //GUARD : only handle create file requests
     if (requestCode != CREATE_FILE) return false;
 
-    if (resultCode == RESULT_CANCELED) {
+    //GUARD : make sure we have a job
+    final ExportJob job = consumeJob();
+    if (exportJob == null) return false;
+
+
+    // -- past this point we are consuming the result
+
+    final Result result = job.result;
+    final String path = job.path;
+
+    try {
+
+      if (resultCode == RESULT_CANCELED) {
         // If we get a cancelled result, we should reset the result and path
-        result.error("result cancelled", null, null);
-        result = null;
-        path = null;
-        return false;
+        result.error("cancelled", "User cancelled the export", null);
+      }
+
+      else if (resultCode == RESULT_OK) {
+        final Uri data = intent != null ? intent.getData() : null;
+        if (data != null) {
+          writeFile(registrar.activeContext(), path, data);
+          result.success("Successfully saved to local storage");
+        } else {
+          result.error("no_directory", "No directory chosen", null);
+        }
+      }
+
+      else {
+        // Unhandled case
+        result.error("unknown_result_code", "Unknown result code returned by OS: " + resultCode, null);
+      }
+    } catch (final Throwable e) {
+      result.error("Failed to save file", e.getMessage(), e);
     }
 
-    if (resultCode == RESULT_OK) {
-        // GUARD : to make sure this block does not run even after cancelled
-        // result is null only in two conditions, a success RESULT_OK return, or a RESULT_CANCELLED return
-        if (result == null) {
-            return false;
-        }
-
-        try {
-            if (intent != null && intent.getData() != null) {
-                writeFile(intent.getData());
-                result.success("Successfully saved to local storage");
-            } else {
-                result.error("No directory chosen", null, null);
-            }
-        } catch (final Throwable e) {
-            result.error("Failed to save file",null, e);
-        } finally {
-            result = null;
-            path = null;
-        }
-        return true;
-    }
-
-    // Unhandled case
-    result.error("Unknown result", null, null);
-    return false;
+    return true;
   }
 
   private void launchFilePicker(String title, String mimeType) {
@@ -143,13 +164,13 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
     registrar.activity().startActivityForResult(intent, CREATE_FILE);
   }
 
-  private void writeFile(Uri uri) throws Throwable {
-    final OutputStream os = registrar.activeContext().getContentResolver().openOutputStream(uri);
+  static private void writeFile(Context context, String fromPath, Uri uri) throws Throwable {
+    final OutputStream os = context.getContentResolver().openOutputStream(uri);
 
     //GUARD
     if (os == null) throw new NullPointerException("output stream is null");
 
-    CopyHelperKt.copyTo(path, os);
+    CopyHelperKt.copyTo(fromPath, os);
   }
 
   private void expectMapArguments(MethodCall call) throws IllegalArgumentException {
