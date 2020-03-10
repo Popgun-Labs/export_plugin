@@ -34,29 +34,6 @@ class ExportPlugin {
     return _channel.invokeMethod('export', params);
   }
 
-  static Future<void> openFile(
-      String uri, {
-        String subject,
-        Rect sharePositionOrigin,
-      }) {
-    assert(uri != null);
-    assert(uri.isNotEmpty);
-
-    final Map<String, dynamic> params = <String, dynamic>{
-      'uri': uri,
-      'subject': subject,
-    };
-
-    if (sharePositionOrigin != null) {
-      params['originX'] = sharePositionOrigin.left;
-      params['originY'] = sharePositionOrigin.top;
-      params['originWidth'] = sharePositionOrigin.width;
-      params['originHeight'] = sharePositionOrigin.height;
-    }
-
-    return _channel.invokeMethod<void>('open', params);
-  }
-
   static String _mimeTypeForFile(File file) {
     assert(file != null);
     final String path = file.path;
