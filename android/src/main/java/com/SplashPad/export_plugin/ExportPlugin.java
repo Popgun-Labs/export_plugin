@@ -108,6 +108,8 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
   public boolean onActivityResult(int requestCode, int resultCode, Intent intent) {
 
     if (BuildConfig.DEBUG) {
+      Log.d("ExportPlugin", "onActivityResult: requestCode = " + requestCode);
+      Log.d("ExportPlugin", "onActivityResult: resultCode = " + resultCode);
       Log.d("ExportPlugin", "onActivityResult: intent = " + intent);
     }
 
@@ -116,8 +118,8 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
 
     //GUARD : make sure we have a job
     final ExportJob job = consumeJob();
+    if (BuildConfig.DEBUG) Log.d("ExportPlugin", "onActivityResult: exportJob = " + job);
     if (job == null) return false;
-
 
     // -- past this point we are consuming the result
 
@@ -127,7 +129,6 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
     try {
 
       if (resultCode == RESULT_CANCELED) {
-        // If we get a cancelled result, we should reset the result and path
         result.error("cancelled", "User cancelled the export", null);
       }
 
