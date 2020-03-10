@@ -116,7 +116,7 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
 
     //GUARD : make sure we have a job
     final ExportJob job = consumeJob();
-    if (exportJob == null) return false;
+    if (job == null) return false;
 
 
     // -- past this point we are consuming the result
@@ -146,7 +146,7 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
         result.error("unknown_result_code", "Unknown result code returned by OS: " + resultCode, null);
       }
     } catch (final Throwable e) {
-      result.error("Failed to save file", e.getMessage(), e);
+      result.error("save_failed", e.getMessage(), e);
     }
 
     return true;
