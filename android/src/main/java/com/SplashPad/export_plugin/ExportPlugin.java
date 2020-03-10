@@ -146,7 +146,7 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
         result.error("unknown_result_code", "Unknown result code returned by OS: " + resultCode, null);
       }
     } catch (final Throwable e) {
-      result.error("Failed to save file", e.getMessage(), e);
+      result.error("save_failed", e.getMessage(), e);
     }
 
     return true;
