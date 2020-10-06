@@ -12,6 +12,8 @@ import java.util.Map;
 
 import io.flutter.BuildConfig;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.embedding.engine.plugins.activity.ActivityAware;
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
@@ -23,7 +25,7 @@ import static android.app.Activity.RESULT_CANCELED;
 import static android.app.Activity.RESULT_OK;
 
 /** ExportPlugin */
-public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityResultListener {
+public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityResultListener, ActivityAware {
 
   // this is so we can keep both the result and the path together
   // prevents us getting into a weird state where we have 1 but not
@@ -42,6 +44,9 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
 
   private ExportJob exportJob;
   private Registrar registrar;
+  private Context activeContext;
+  private ExportPlugin instance;
+  private ActivityPluginBinding activityBinding;
 
   // returns the current job and sets it to null
   private ExportJob consumeJob() {
@@ -50,21 +55,13 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
     return job;
   }
 
-
-  // constructor for v2 (flutterPluginBinding)
-  private ExportPlugin() {
-    // NOT YET IMPLEMENTED
-  }
-
-  // constructor for v1 (registerWith)
-  private ExportPlugin(Registrar registrar) {
-    this.registrar = registrar;
-  }
-
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
     final MethodChannel channel = new MethodChannel(flutterPluginBinding.getFlutterEngine().getDartExecutor(), "export_plugin");
-    channel.setMethodCallHandler(new ExportPlugin());
+    instance = new ExportPlugin();
+    channel.setMethodCallHandler(instance);
+
+    this.activeContext = flutterPluginBinding.getApplicationContext();
   }
 
   // This static function is optional and equivalent to onAttachedToEngine. It supports the old
@@ -76,11 +73,37 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
   // them functionally equivalent. Only one of onAttachedToEngine or registerWith will be called
   // depending on the user's project. onAttachedToEngine or registerWith must both be defined
   // in the same class.
-  public static void registerWith(Registrar registrar) {
+  public void registerWith(Registrar registrar) {
     final MethodChannel channel = new MethodChannel(registrar.messenger(), "export_plugin");
-    ExportPlugin instance = new ExportPlugin(registrar);
+    instance = new ExportPlugin();
     registrar.addActivityResultListener(instance);
     channel.setMethodCallHandler(instance);
+
+    this.registrar = registrar;
+    this.activeContext = registrar.activeContext();
+  }
+
+  @Override
+  public void onAttachedToActivity(ActivityPluginBinding activityPluginBinding) {
+    activityBinding = activityPluginBinding;
+    activityPluginBinding.addActivityResultListener(instance);
+  }
+
+  @Override
+  public void onDetachedFromActivityForConfigChanges() {
+    onDetachedFromActivity();
+  }
+
+  @Override
+  public void onReattachedToActivityForConfigChanges(ActivityPluginBinding activityPluginBinding) {
+    onAttachedToActivity(activityPluginBinding);
+  }
+
+  @Override
+  public void onDetachedFromActivity() {
+    activityBinding.removeActivityResultListener(instance);
+    instance = null;
+    // todo clean up refs
   }
 
   @Override
@@ -135,7 +158,7 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
       else if (resultCode == RESULT_OK) {
         final Uri data = intent != null ? intent.getData() : null;
         if (data != null) {
-          writeFile(registrar.activeContext(), path, data);
+          writeFile(activeContext, path, data);
           result.success("Successfully saved to local storage");
         } else {
           result.error("no_directory", "No directory chosen", null);
@@ -162,7 +185,12 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
     intent.setType(mimeType);
     intent.putExtra(Intent.EXTRA_TITLE, title);
 
-    registrar.activity().startActivityForResult(intent, CREATE_FILE);
+    if (registrar != null) {
+      registrar.activity().startActivityForResult(intent, CREATE_FILE);
+    } else {
+      activityBinding.getActivity().startActivityForResult(intent, CREATE_FILE);
+    }
+
   }
 
   static private void writeFile(Context context, String fromPath, Uri uri) throws Throwable {
