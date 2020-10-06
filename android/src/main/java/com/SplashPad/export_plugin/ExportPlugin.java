@@ -1,11 +1,17 @@
 package com.SplashPad.export_plugin;
 
+import android.app.Activity;
+import android.app.Application;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Bundle;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.lifecycle.DefaultLifecycleObserver;
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleOwner;
 
 import java.io.OutputStream;
 import java.util.Map;
@@ -14,6 +20,7 @@ import io.flutter.BuildConfig;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
+import io.flutter.embedding.engine.plugins.lifecycle.FlutterLifecycleAdapter;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
@@ -26,6 +33,61 @@ import static android.app.Activity.RESULT_OK;
 
 /** ExportPlugin */
 public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityResultListener, ActivityAware {
+
+  private class LifeCycleObserver
+          implements Application.ActivityLifecycleCallbacks, DefaultLifecycleObserver {
+    private final Activity thisActivity;
+
+    LifeCycleObserver(Activity activity) {
+      this.thisActivity = activity;
+    }
+
+    @Override
+    public void onCreate(@NonNull LifecycleOwner owner) {}
+
+    @Override
+    public void onStart(@NonNull LifecycleOwner owner) {}
+
+    @Override
+    public void onResume(@NonNull LifecycleOwner owner) {}
+
+    @Override
+    public void onPause(@NonNull LifecycleOwner owner) {}
+
+    @Override
+    public void onStop(@NonNull LifecycleOwner owner) {}
+    @Override
+    public void onDestroy(@NonNull LifecycleOwner owner) {
+      onActivityDestroyed(thisActivity);
+    }
+
+    @Override
+    public void onActivityCreated(Activity activity, Bundle savedInstanceState) {}
+
+    @Override
+    public void onActivityStarted(Activity activity) {}
+
+    @Override
+    public void onActivityResumed(Activity activity) {}
+
+    @Override
+    public void onActivityPaused(Activity activity) {}
+
+    @Override
+    public void onActivitySaveInstanceState(Activity activity, Bundle outState) {}
+
+    @Override
+    public void onActivityDestroyed(Activity activity) {
+      if (thisActivity == activity && activity.getApplicationContext() != null) {
+        ((Application) activity.getApplicationContext())
+                .unregisterActivityLifecycleCallbacks(
+                        this); // Use getApplicationContext() to avoid casting failures
+      }
+    }
+
+    @Override
+    public void onActivityStopped(Activity activity) {}
+  }
 
   // this is so we can keep both the result and the path together
   // prevents us getting into a weird state where we have 1 but not
@@ -45,8 +107,10 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
   private ExportJob exportJob;
   private Registrar registrar;
   private Context activeContext;
-  private ExportPlugin instance;
   private ActivityPluginBinding activityBinding;
+  // This is null when not using v2 embedding;
+  private Lifecycle lifecycle;
+  private LifeCycleObserver observer;
 
   // returns the current job and sets it to null
   private ExportJob consumeJob() {
@@ -58,8 +122,7 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
   @Override
   public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
     final MethodChannel channel = new MethodChannel(flutterPluginBinding.getFlutterEngine().getDartExecutor(), "export_plugin");
-    instance = new ExportPlugin();
-    channel.setMethodCallHandler(instance);
+    channel.setMethodCallHandler(this);
 
     this.activeContext = flutterPluginBinding.getApplicationContext();
   }
@@ -75,7 +138,7 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
   // in the same class.
   public void registerWith(Registrar registrar) {
     final MethodChannel channel = new MethodChannel(registrar.messenger(), "export_plugin");
-    instance = new ExportPlugin();
+    final ExportPlugin instance = new ExportPlugin();
     registrar.addActivityResultListener(instance);
     channel.setMethodCallHandler(instance);
 
@@ -86,7 +149,11 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
   @Override
   public void onAttachedToActivity(ActivityPluginBinding activityPluginBinding) {
     activityBinding = activityPluginBinding;
-    activityPluginBinding.addActivityResultListener(instance);
+    activityPluginBinding.addActivityResultListener(this);
+
+    observer = new LifeCycleObserver(activityBinding.getActivity());
+    lifecycle = FlutterLifecycleAdapter.getActivityLifecycle(activityBinding);
+    lifecycle.addObserver(observer);
   }
 
   @Override
@@ -101,9 +168,9 @@ public class ExportPlugin implements FlutterPlugin, MethodCallHandler, ActivityR
 
   @Override
   public void onDetachedFromActivity() {
-    activityBinding.removeActivityResultListener(instance);
-    instance = null;
-    // todo clean up refs
+    activityBinding.removeActivityResultListener(this);
+    lifecycle.removeObserver(observer);
+    lifecycle = null;
   }
 
   @Override
